@@ -97,7 +97,7 @@ const QC_LABELS = {
 const NUMERIC_FIELDS = [
   { key: "elevation_field_m", label: "現地標高", unit: "m" },
   { key: "water_temp_field_c", label: "現地水温", unit: "℃" },
-  { key: "conductivity_field_us_cm", label: "現地電気伝導度", unit: "μS/cm" },
+  { key: "conductivity_field_ms_m", label: "現地電気伝導率", unit: "mS/m" },
   { key: "ph_field", label: "現地pH", unit: "" },
   { key: "rph_field", label: "現地RpH", unit: "" },
   { key: "ph_difference", label: "RpH - pH", unit: "" },
@@ -107,7 +107,7 @@ const NUMERIC_FIELDS = [
   { key: "nitrate_mg_l", label: "硝酸濃度", unit: "mg/L" },
   { key: "nitrate_mv", label: "硝酸センサー電圧", unit: "mV" },
   { key: "water_temp_cfg_c", label: "CfG水温", unit: "℃" },
-  { key: "conductivity_cfg_us_cm", label: "CfG電気伝導度", unit: "μS/cm" },
+  { key: "conductivity_cfg_ms_m", label: "CfG電気伝導率", unit: "mS/m" },
   { key: "ph_cfg", label: "CfG pH", unit: "" },
   { key: "ph_cfg_retest", label: "CfG pH再測定", unit: "" },
   { key: "orp_mv", label: "ORP", unit: "mV" },
@@ -242,7 +242,7 @@ function buildPopupHtml(properties) {
   const typeLabel = TYPE_LABELS[properties.feature_type] || properties.feature_type;
   const fieldRows = [
     ["水温", hasValue(properties.water_temp_field_c) ? `${formatNumber(properties.water_temp_field_c)} ℃` : null],
-    ["電気伝導度", hasValue(properties.conductivity_field_us_cm) ? `${formatNumber(properties.conductivity_field_us_cm, 2)} μS/cm` : null],
+    ["電気伝導率", hasValue(properties.conductivity_field_ms_m) ? `${formatNumber(properties.conductivity_field_ms_m, 3)} mS/m` : null],
     ["pH", hasValue(properties.ph_field) ? formatNumber(properties.ph_field, 2) : null],
     ["RpH", hasValue(properties.rph_field) ? formatNumber(properties.rph_field, 2) : null],
     ["RpH - pH", hasValue(properties.ph_difference) ? formatNumber(properties.ph_difference, 2) : null],
@@ -252,7 +252,7 @@ function buildPopupHtml(properties) {
     ["測定日時", hasValue(properties.cfg_observed_at) ? formatDateTime(properties.cfg_observed_at) : null],
     ["NO3濃度", hasValue(properties.nitrate_mg_l) ? `${formatNumber(properties.nitrate_mg_l, 3)} mg/L` : null],
     ["水温", hasValue(properties.water_temp_cfg_c) ? `${formatNumber(properties.water_temp_cfg_c)} ℃` : null],
-    ["電気伝導度", hasValue(properties.conductivity_cfg_us_cm) ? `${formatNumber(properties.conductivity_cfg_us_cm, 2)} μS/cm` : null],
+    ["電気伝導率", hasValue(properties.conductivity_cfg_ms_m) ? `${formatNumber(properties.conductivity_cfg_ms_m, 3)} mS/m` : null],
     ["pH", hasValue(properties.ph_cfg) ? formatNumber(properties.ph_cfg, 2) : null],
     ["pH再測定", hasValue(properties.ph_cfg_retest) ? formatNumber(properties.ph_cfg_retest, 2) : null],
     ["ORP", hasValue(properties.orp_mv) ? `${formatNumber(properties.orp_mv)} mV` : null],
@@ -828,7 +828,7 @@ function populateChartControls() {
   elements.scatterXField.innerHTML = options;
   elements.scatterYField.innerHTML = options;
   elements.histogramField.value = "elevation_field_m";
-  elements.scatterXField.value = "conductivity_field_us_cm";
+  elements.scatterXField.value = "conductivity_field_ms_m";
   elements.scatterYField.value = "ph_field";
 }
 

@@ -24,10 +24,10 @@
 | `longitude`, `latitude` | 地図表示用座標 |
 | `in_yokoze_town` | 横瀬町内かどうか |
 | `water_temp_field_c` | 現地調査側の水温（℃） |
-| `conductivity_field_us_cm` | 現地調査側の電気伝導度（μS/cm） |
+| `conductivity_field_ms_m` | 現地調査側の電気伝導率（mS/m） |
 | `ph_field`, `rph_field` | 現地調査側のpHとRpH |
 | `nitrate_mg_l` | Code for Ground側のNO3濃度（mg/L） |
-| `conductivity_cfg_us_cm` | Code for Ground側の電気伝導度（μS/cm） |
+| `conductivity_cfg_ms_m` | Code for Ground側の電気伝導率（mS/m） |
 | `ph_cfg`, `ph_cfg_retest` | Code for Ground側のpHと再測定値 |
 | `orp_mv` | Code for Ground側のORP（mV） |
 | `qc_flags` | 範囲・欠測・地点統合の確認情報 |
@@ -38,7 +38,7 @@
 
 - 名称のアンダースコアと全角空白を統一
 - 日時、数値、IDの型を統一
-- 現地調査側のECを `mS/m` から `μS/cm` へ変換し、原値も保持
+- 電気伝導率はSI単位の `mS/m` に統一し、Code for Ground側の原値（μS/cm）を0.1倍して換算
 - `RpH - pH` を再計算
 - メモに記載されたCode for GroundのpH再測定値を数値化
 - 測定機器の値は上書きせず、`field` と `cfg` の別属性に保持
