@@ -14,6 +14,12 @@ const TOUR_OVERVIEW_DURATION_MS = 3600;
 const TOUR_DETAIL_START_MS = 4400;
 const TOUR_DETAIL_DURATION_MS = 4800;
 const TOUR_POPUP_DELAY_MS = 9300;
+const HOME_CAMERA = {
+  center: [139.0895, 35.997],
+  zoom: 12.2,
+  pitch: 0,
+  bearing: 0,
+};
 const GSI_STYLE = {
   version: 8,
   name: "地理院地図 標準地図",
@@ -160,6 +166,18 @@ const elements = {
   basemap: document.querySelector("#basemap-select"),
   projection: document.querySelector("#projection-toggle"),
   fit: document.querySelector("#fit-data"),
+  homeLogo: document.querySelector("#home-logo"),
+  homeTitle: document.querySelector("#home-title"),
+  shareButton: document.querySelector("#share-button"),
+  shareDialog: document.querySelector("#share-dialog"),
+  shareClose: document.querySelector("#share-close"),
+  shareHomeUrl: document.querySelector("#share-home-url"),
+  sharePlaceOption: document.querySelector("#share-place-option"),
+  sharePlaceLabel: document.querySelector("#share-place-label"),
+  sharePlaceUrl: document.querySelector("#share-place-url"),
+  shareCopyHome: document.querySelector("#share-copy-home"),
+  shareCopyPlace: document.querySelector("#share-copy-place"),
+  shareStatus: document.querySelector("#share-status"),
   sidebar: document.querySelector("#sidebar"),
   sidebarToggle: document.querySelector("#sidebar-toggle"),
   sidebarScrim: document.querySelector("#sidebar-scrim"),
@@ -215,6 +233,79 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function getHomePermalink() {
+  const url = new URL(window.location.href);
+  url.hash = "";
+  return url.href;
+}
+
+function getActiveFeature() {
+  if (!state.activeFeatureId || !state.data) return null;
+  return state.data.features.find(
+    (feature) => feature.properties.feature_id === state.activeFeatureId,
+  ) || null;
+}
+
+function getFeaturePermalink(feature) {
+  return `${getHomePermalink()}#${encodeURIComponent(feature.properties.feature_id)}`;
+}
+
+function closeShareDialog() {
+  elements.shareDialog.hidden = true;
+  elements.shareButton.setAttribute("aria-expanded", "false");
+}
+
+function renderShareDialog() {
+  elements.shareHomeUrl.textContent = getHomePermalink();
+  const feature = getActiveFeature();
+  elements.sharePlaceOption.hidden = !feature;
+  if (feature) {
+    elements.sharePlaceLabel.textContent = feature.properties.name || "地点のPermalink";
+    elements.sharePlaceUrl.textContent = getFeaturePermalink(feature);
+  }
+}
+
+function toggleShareDialog() {
+  const willOpen = elements.shareDialog.hidden;
+  elements.shareDialog.hidden = !willOpen;
+  elements.shareButton.setAttribute("aria-expanded", String(willOpen));
+  elements.shareStatus.textContent = "";
+  if (willOpen) renderShareDialog();
+}
+
+async function copyShareUrl(kind) {
+  const feature = getActiveFeature();
+  const url = kind === "place" && feature ? getFeaturePermalink(feature) : getHomePermalink();
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
+    else {
+      const input = document.createElement("textarea");
+      input.value = url;
+      input.setAttribute("readonly", "");
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.append(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }
+    elements.shareStatus.textContent = kind === "place" && feature
+      ? "地点のPermalinkをコピーしました。"
+      : "トップページURLをコピーしました。";
+  } catch {
+    elements.shareStatus.textContent = "コピーできませんでした。URLを選択してコピーしてください。";
+  }
+}
+
+function returnToHome(event) {
+  event.preventDefault();
+  pauseTour({ reset: true, closePopup: true });
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
+  map.easeTo({ ...HOME_CAMERA, duration: 700, essential: true });
+  closeSidebar();
+  closeShareDialog();
 }
 
 function formatNumber(value, digits = 1) {
@@ -325,6 +416,7 @@ function openFeature(feature, options = {}) {
   if (options.updateHash !== false) {
     history.replaceState(null, "", `#${encodeURIComponent(feature.properties.feature_id)}`);
   }
+  renderShareDialog();
 }
 
 function addDataLayers() {
@@ -951,6 +1043,7 @@ function pauseTour(options = {}) {
     if (feature) showFeaturePopup(feature);
   }
   updateTourControls();
+  renderShareDialog();
 }
 
 function scheduleNextTourFeature() {
@@ -1020,7 +1113,7 @@ function showTourFeature(index) {
   clearTourZoomTimer();
   clearTourPopupTimer();
   popup.remove();
-  openFeature(feature, camera.overview);
+  openFeature(feature, { ...camera.overview, updateHash: false });
   setActiveResult(feature.properties.feature_id, { scroll: false });
   updateTourControls();
   state.tourZoomTimer = window.setTimeout(() => {
@@ -1203,6 +1296,11 @@ function bindControls() {
   elements.tourPlay.addEventListener("click", startTour);
   elements.tourPause.addEventListener("click", () => pauseTour({ revealPopup: true }));
   elements.fit.addEventListener("click", () => fitToFeatures());
+  elements.homeTitle.addEventListener("click", returnToHome);
+  elements.shareButton.addEventListener("click", toggleShareDialog);
+  elements.shareClose.addEventListener("click", closeShareDialog);
+  elements.shareCopyHome.addEventListener("click", () => copyShareUrl("home"));
+  elements.shareCopyPlace.addEventListener("click", () => copyShareUrl("place"));
   elements.basemap.addEventListener("change", (event) => switchBasemap(event.target.value));
   elements.projection.addEventListener("click", () => {
     state.projection = state.projection === "globe" ? "mercator" : "globe";
@@ -1214,7 +1312,17 @@ function bindControls() {
   });
   elements.sidebarScrim.addEventListener("click", closeSidebar);
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeSidebar();
+    if (event.key === "Escape") {
+      closeSidebar();
+      closeShareDialog();
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (
+      !elements.shareDialog.hidden &&
+      !elements.shareDialog.contains(event.target) &&
+      !elements.shareButton.contains(event.target)
+    ) closeShareDialog();
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && state.tourPlaying) pauseTour();

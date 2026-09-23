@@ -23,19 +23,24 @@
       href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css"
     />
     <script src="https://unpkg.com/pmtiles@4.3.0/dist/pmtiles.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=0.5.6" />
+    <link rel="stylesheet" href="./styles.css?v=0.6.0" />
   </head>
   <body>
     <a class="skip-link" href="#map">地図へ移動</a>
 
     <header class="topbar">
       <div class="brand-block">
-        <span class="brand-mark" aria-hidden="true">Y</span>
+        <a id="home-logo" class="brand-mark" href="https://github.com/furuhashilab/YOKOZEatlas2026" target="_blank" rel="noreferrer" aria-label="YOKOZEatlas2026 リポジトリを開く">
+          <img src="./assets/yokoze-atlas-mark.png" alt="" />
+        </a>
         <div>
-          <p class="eyebrow">YOKOZE Atlas 2026 / MORIGAWA</p>
+          <p class="eyebrow">
+            <a href="https://github.com/furuhashilab/YOKOZEatlas2026" target="_blank" rel="noreferrer">YOKOZE Atlas 2026</a>
+            <span> / MORIGAWA</span>
+          </p>
           <h1>
-            <span class="title-text">荒川流域圏構想フィールドワーク</span>
-            <span class="version-label">v0.5.7</span>
+            <a id="home-title" class="title-text" href="./">荒川流域圏構想フィールドワーク</a>
+            <span class="version-label">v0.6.0</span>
           </h1>
         </div>
       </div>
@@ -49,6 +54,29 @@
         >
           地点を探す
         </button>
+        <button
+          id="share-button"
+          class="icon-action"
+          type="button"
+          aria-label="共有リンクを表示"
+          aria-expanded="false"
+          aria-controls="share-dialog"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 5 20 10 15 15M20 10H9a5 5 0 0 0-5 5v2" />
+          </svg>
+        </button>
+        <a
+          class="icon-action"
+          href="https://github.com/mapconcierge/YOKOZEatlas2026_ArakawaRiverBasinFieldwork202609"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="GitHubリポジトリを開く"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2.8a9.2 9.2 0 0 0-2.9 17.93c.46.08.63-.2.63-.45v-1.74c-2.56.56-3.1-1.09-3.1-1.09-.42-1.08-1.03-1.36-1.03-1.36-.84-.58.06-.57.06-.57.93.07 1.42.96 1.42.96.83 1.42 2.17 1.01 2.7.77.08-.6.32-1.01.59-1.24-2.04-.23-4.19-1.02-4.19-4.54 0-1 .36-1.82.95-2.46-.1-.23-.41-1.17.09-2.44 0 0 .78-.25 2.53.94A8.8 8.8 0 0 1 12 7.24a8.8 8.8 0 0 1 2.3.31c1.75-1.19 2.53-.94 2.53-.94.5 1.27.19 2.21.1 2.44.58.64.94 1.46.94 2.46 0 3.53-2.15 4.3-4.2 4.53.33.29.62.85.62 1.71v2.54c0 .25.17.54.63.45A9.2 9.2 0 0 0 12 2.8Z" />
+          </svg>
+        </a>
         <a
           class="button button-secondary"
           href="./data/YOKOZEatlas2026_morigawa_water_quality_v0.1.0.csv"
@@ -60,6 +88,24 @@
           download
         >GeoJSON</a>
       </div>
+      <section id="share-dialog" class="share-dialog" aria-labelledby="share-title" hidden>
+        <div class="share-dialog-heading">
+          <h2 id="share-title">共有</h2>
+          <button id="share-close" class="share-close" type="button" aria-label="共有ダイアログを閉じる">×</button>
+        </div>
+        <p class="share-note">リンクをコピーして共有できます。</p>
+        <div class="share-option">
+          <span class="share-option-label">トップページ</span>
+          <code id="share-home-url"></code>
+          <button id="share-copy-home" class="share-copy-button" type="button">URLをコピー</button>
+        </div>
+        <div id="share-place-option" class="share-option" hidden>
+          <span id="share-place-label" class="share-option-label">地点</span>
+          <code id="share-place-url"></code>
+          <button id="share-copy-place" class="share-copy-button" type="button">地点URLをコピー</button>
+        </div>
+        <p id="share-status" class="share-status" aria-live="polite"></p>
+      </section>
     </header>
 
     <main class="app-shell">
@@ -251,6 +297,6 @@
 
     <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
 
-    <script type="module" src="./app.js?v=0.5.7"></script>
+    <script type="module" src="./app.js?v=0.6.0"></script>
   </body>
 </html>
