@@ -128,6 +128,7 @@ const state = {
   basemap: "openfreemap",
   interactionsBound: false,
   tourPlaying: false,
+  tourOrder: "time",
   tourIndex: -1,
   tourPhase: null,
   tourTimer: null,
@@ -148,6 +149,7 @@ const elements = {
   reset: document.querySelector("#reset-filters"),
   resultList: document.querySelector("#result-list"),
   resultCount: document.querySelector("#result-count"),
+  tourOrder: document.querySelector("#tour-order"),
   tourPlay: document.querySelector("#tour-play"),
   tourPause: document.querySelector("#tour-pause"),
   tourStatus: document.querySelector("#tour-status"),
@@ -316,9 +318,52 @@ function formatNumber(value, digits = 1) {
   }).format(Number(value));
 }
 
+function parseTimestampAsJst(value) {
+  if (!hasValue(value)) return null;
+  const rawValue = String(value).trim().replace(" ", "T");
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(rawValue);
+  const date = new Date(hasTimeZone ? rawValue : `${rawValue}+09:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function formatDateTime(value) {
-  if (!hasValue(value)) return "—";
-  return String(value).replace("T", " ").slice(0, 19);
+  const date = parseTimestampAsJst(value);
+  if (!date) return hasValue(value) ? String(value) : "—";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} JST`;
+}
+
+function compareFeatureIds(firstFeature, secondFeature) {
+  return String(firstFeature.properties.feature_id || "").localeCompare(
+    String(secondFeature.properties.feature_id || ""),
+    "en",
+    { numeric: true, sensitivity: "base" },
+  );
+}
+
+function getTourFeatures(features = state.filteredData?.features || []) {
+  return [...features].sort((firstFeature, secondFeature) => {
+    if (state.tourOrder === "id") {
+      return compareFeatureIds(firstFeature, secondFeature);
+    }
+    const firstTime = parseTimestampAsJst(firstFeature.properties.observed_at)?.getTime() ?? Infinity;
+    const secondTime = parseTimestampAsJst(secondFeature.properties.observed_at)?.getTime() ?? Infinity;
+    return firstTime - secondTime || compareFeatureIds(firstFeature, secondFeature);
+  });
 }
 
 function popupRows(rows) {
@@ -628,7 +673,7 @@ function filterData() {
   pauseTour({ reset: true, closePopup: true });
   updateMapSource();
   updateSummary(features);
-  renderResults(features);
+  renderResults(getTourFeatures(features));
   renderStatisticsPanel();
 }
 
@@ -984,7 +1029,8 @@ function clearTourTimers() {
 }
 
 function updateTourControls() {
-  const count = state.filteredData?.features.length || 0;
+  const count = getTourFeatures().length;
+  const orderLabel = state.tourOrder === "time" ? "時間順・JST" : "ID順";
   elements.tourPlay.disabled = !count || state.tourPlaying;
   elements.tourPause.disabled = !state.tourPlaying;
 
@@ -999,9 +1045,9 @@ function updateTourControls() {
     const status = state.tourPlaying
       ? phaseLabels[state.tourPhase] || "再生中"
       : "一時停止中";
-    elements.tourStatus.textContent = `${status} ${state.tourIndex + 1} / ${count}`;
+    elements.tourStatus.textContent = `${orderLabel}・${status} ${state.tourIndex + 1} / ${count}`;
   } else {
-    elements.tourStatus.textContent = `${count}地点`;
+    elements.tourStatus.textContent = `${orderLabel}・${count}地点`;
   }
 }
 
@@ -1039,7 +1085,7 @@ function pauseTour(options = {}) {
       history.replaceState(null, "", `${location.pathname}${location.search}`);
     }
   } else if (options.revealPopup) {
-    const feature = state.filteredData?.features[state.tourIndex];
+    const feature = getTourFeatures()[state.tourIndex];
     if (feature) showFeaturePopup(feature);
   }
   updateTourControls();
@@ -1050,7 +1096,7 @@ function scheduleNextTourFeature() {
   clearTourTimer();
   if (!state.tourPlaying) return;
   state.tourTimer = window.setTimeout(() => {
-    const count = state.filteredData?.features.length || 0;
+    const count = getTourFeatures().length;
     if (!count) {
       pauseTour({ reset: true });
       return;
@@ -1100,7 +1146,7 @@ function createTourCameraOptions() {
 }
 
 function showTourFeature(index) {
-  const features = state.filteredData?.features || [];
+  const features = getTourFeatures();
   if (!features.length) {
     pauseTour({ reset: true });
     return;
@@ -1117,7 +1163,7 @@ function showTourFeature(index) {
   setActiveResult(feature.properties.feature_id, { scroll: false });
   updateTourControls();
   state.tourZoomTimer = window.setTimeout(() => {
-    const currentFeature = state.filteredData?.features[state.tourIndex];
+    const currentFeature = getTourFeatures()[state.tourIndex];
     if (
       state.tourPlaying &&
       currentFeature?.properties.feature_id === feature.properties.feature_id
@@ -1129,7 +1175,7 @@ function showTourFeature(index) {
     state.tourZoomTimer = null;
   }, TOUR_DETAIL_START_MS);
   state.tourPopupTimer = window.setTimeout(() => {
-    const currentFeature = state.filteredData?.features[state.tourIndex];
+    const currentFeature = getTourFeatures()[state.tourIndex];
     if (
       state.tourPlaying &&
       currentFeature?.properties.feature_id === feature.properties.feature_id
@@ -1144,7 +1190,7 @@ function showTourFeature(index) {
 }
 
 function startTour() {
-  const count = state.filteredData?.features.length || 0;
+  const count = getTourFeatures().length;
   if (!count || state.tourPlaying) return;
   state.tourPlaying = true;
   const nextIndex = state.tourIndex >= 0 ? (state.tourIndex + 1) % count : 0;
@@ -1178,6 +1224,7 @@ function renderResults(features) {
       <span class="result-item-meta">
         ${escapeHtml(properties.municipality)} ・ ${escapeHtml(TYPE_LABELS[properties.feature_type] || properties.feature_type)}
       </span>
+      <span class="result-item-time">${escapeHtml(formatDateTime(properties.observed_at))}</span>
     `;
     button.addEventListener("click", () => {
       pauseTour();
@@ -1253,7 +1300,7 @@ function bindMapInteractions() {
       (feature) => feature.properties.feature_id === featureId,
     );
     if (sourceFeature) {
-      state.tourIndex = state.filteredData.features.findIndex(
+      state.tourIndex = getTourFeatures().findIndex(
         (feature) => feature.properties.feature_id === featureId,
       );
       openFeature(sourceFeature, { fly: false });
@@ -1292,6 +1339,11 @@ function bindControls() {
   });
   [elements.histogramField, elements.scatterXField, elements.scatterYField].forEach((select) => {
     select.addEventListener("change", renderStatisticsPanel);
+  });
+  elements.tourOrder.addEventListener("change", () => {
+    state.tourOrder = elements.tourOrder.value;
+    pauseTour({ reset: true, closePopup: true });
+    renderResults(getTourFeatures());
   });
   elements.tourPlay.addEventListener("click", startTour);
   elements.tourPause.addEventListener("click", () => pauseTour({ revealPopup: true }));
@@ -1374,7 +1426,7 @@ async function initialize() {
     state.filteredData = data;
     addDataLayers();
     updateSummary(data.features);
-    renderResults(data.features);
+    renderResults(getTourFeatures(data.features));
     renderStatisticsPanel();
     fitToFeatures(data.features);
     elements.loading.hidden = true;

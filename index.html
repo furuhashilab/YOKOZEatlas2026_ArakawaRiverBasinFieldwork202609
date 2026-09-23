@@ -23,7 +23,7 @@
       href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css"
     />
     <script src="https://unpkg.com/pmtiles@4.3.0/dist/pmtiles.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=0.6.0" />
+    <link rel="stylesheet" href="./styles.css?v=0.6.1" />
   </head>
   <body>
     <a class="skip-link" href="#map">地図へ移動</a>
@@ -40,7 +40,7 @@
           </p>
           <h1>
             <a id="home-title" class="title-text" href="./">荒川流域圏構想フィールドワーク</a>
-            <span class="version-label">v0.6.0</span>
+            <span class="version-label">v0.6.1</span>
           </h1>
         </div>
       </div>
@@ -232,6 +232,13 @@
             <h2 id="result-title">地点一覧</h2>
             <span id="result-count" class="result-count">—</span>
           </div>
+          <label class="tour-order-field" for="tour-order">
+            再生モード
+            <select id="tour-order">
+              <option value="time" selected>時間順（JST）</option>
+              <option value="id">ID順</option>
+            </select>
+          </label>
           <div class="tour-controls" role="group" aria-label="地点の自動巡回">
             <button id="tour-play" class="tour-button" type="button" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -297,6 +304,6 @@
 
     <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
 
-    <script type="module" src="./app.js?v=0.6.0"></script>
+    <script type="module" src="./app.js?v=0.6.1"></script>
   </body>
 </html>
