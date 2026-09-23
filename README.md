@@ -2,6 +2,8 @@
 
 2026年9月21日・22日に実施した「荒川流域圏構想フィールドワーク」の水質測定と水環境観察を可視化するウェブマップです。
 
+<img width="1800" height="1129" alt="Image" src="https://github.com/user-attachments/assets/b58dc5dc-67d5-4793-87fe-befd70a36195" />
+
 ## ウェブマップ
 
 <https://mapconcierge.github.io/YOKOZEatlas2026_ArakawaRiverBasinFieldwork202609/>
