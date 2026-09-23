@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="2026年9月21日・22日の荒川流域圏構想フィールドワークで記録した、水質・湧水・井戸のオープンデータマップです。"
+    />
+    <meta name="theme-color" content="#0b4f5c" />
+    <meta property="og:title" content="荒川流域圏構想フィールドワーク 2026.09" />
+    <meta
+      property="og:description"
+      content="横瀬町・秩父市の水質測定と水環境観察のウェブマップ"
+    />
+    <meta property="og:type" content="website" />
+    <title>荒川流域圏構想フィールドワーク 2026.09 | YOKOZE Atlas</title>
+    <link rel="preconnect" href="https://unpkg.com" crossorigin />
+    <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css"
+    />
+    <link rel="stylesheet" href="./styles.css?v=0.5.0" />
+  </head>
+  <body>
+    <a class="skip-link" href="#map">地図へ移動</a>
+
+    <header class="topbar">
+      <div class="brand-block">
+        <span class="brand-mark" aria-hidden="true">Y</span>
+        <div>
+          <p class="eyebrow">YOKOZE Atlas 2026 / MORIGAWA</p>
+          <h1>
+            <span class="title-text">荒川流域圏構想フィールドワーク</span>
+            <span class="version-label">v0.5.0</span>
+          </h1>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button
+          id="sidebar-toggle"
+          class="button button-secondary mobile-only"
+          type="button"
+          aria-controls="sidebar"
+          aria-expanded="false"
+        >
+          地点を探す
+        </button>
+        <a
+          class="button button-secondary"
+          href="./data/YOKOZEatlas2026_morigawa_water_quality_v0.1.0.csv"
+          download
+        >CSV</a>
+        <a
+          class="button button-primary"
+          href="./data/YOKOZEatlas2026_morigawa_water_quality_v0.1.0.geojson"
+          download
+        >GeoJSON</a>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <aside id="sidebar" class="sidebar" aria-label="地点の検索と絞り込み">
+        <section class="intro-panel">
+          <p class="date-label">2026.09.21–22</p>
+          <p>
+            横瀬町から秩父市まで、湧水・井戸・水路をたどり、
+            現地で記録した水質と水環境のデータです。
+          </p>
+        </section>
+
+        <section class="stats-grid" aria-label="表示中の集計">
+          <div class="stat-card">
+            <span id="stat-visible" class="stat-value">—</span>
+            <span class="stat-label">表示地点</span>
+          </div>
+          <div class="stat-card">
+            <span id="stat-measured" class="stat-value">—</span>
+            <span class="stat-label">水質測定</span>
+          </div>
+          <div class="stat-card">
+            <span id="stat-yokoze" class="stat-value">—</span>
+            <span class="stat-label">横瀬町内</span>
+          </div>
+          <div class="stat-card">
+            <span id="stat-cfg" class="stat-value">—</span>
+            <span class="stat-label">CfG統合</span>
+          </div>
+        </section>
+
+        <section class="filters" aria-labelledby="filter-title">
+          <div class="section-heading">
+            <h2 id="filter-title">絞り込み</h2>
+            <button id="reset-filters" class="text-button" type="button">リセット</button>
+          </div>
+
+          <label class="field-label" for="search-input">名称・住所・備考</label>
+          <div class="search-field">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" />
+            </svg>
+            <input id="search-input" type="search" placeholder="井戸、湧水、神社…" />
+          </div>
+
+          <label class="field-label" for="municipality-filter">地域</label>
+          <select id="municipality-filter">
+            <option value="all">すべて</option>
+            <option value="横瀬町">横瀬町</option>
+            <option value="秩父市">秩父市</option>
+          </select>
+
+          <fieldset class="filter-group">
+            <legend>地点の種類</legend>
+            <label class="check-row">
+              <input type="checkbox" name="feature-class" value="water_quality_sample" checked />
+              <span class="legend-dot sample"></span>
+              水質測定地点
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="feature-class" value="water_feature" checked />
+              <span class="legend-dot water"></span>
+              水環境の観察地点
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="feature-class" value="other_observation" checked />
+              <span class="legend-dot other"></span>
+              その他の観察地点
+            </label>
+          </fieldset>
+
+          <div class="switch-list">
+            <label class="switch-row">
+              <span>現地水質測定あり</span>
+              <input id="measured-only" type="checkbox" role="switch" />
+            </label>
+            <label class="switch-row">
+              <span>Code for Ground統合あり</span>
+              <input id="cfg-only" type="checkbox" role="switch" />
+            </label>
+          </div>
+        </section>
+
+        <section class="result-section" aria-labelledby="result-title">
+          <div class="section-heading result-heading">
+            <h2 id="result-title">地点一覧</h2>
+            <span id="result-count" class="result-count">—</span>
+          </div>
+          <div id="result-list" class="result-list" aria-live="polite"></div>
+        </section>
+
+        <footer class="sidebar-footer">
+          <p>
+            整備ルール:
+            <a href="https://github.com/furuhashilab/YOKOZEatlas2026/issues/16" target="_blank" rel="noreferrer">
+              YOKOZE Atlas v0.5.1
+            </a>
+          </p>
+          <p>ウェブマップ: CC0 1.0 / データライセンス確認中 / 更新 2026-09-23</p>
+        </footer>
+      </aside>
+
+      <section class="map-stage" aria-label="ウェブマップ">
+        <div id="map" role="application" aria-label="水質・水環境調査地点の地図"></div>
+
+        <div class="map-toolbar" aria-label="地図の表示設定">
+          <label>
+            <span>背景地図</span>
+            <select id="basemap-select">
+              <option value="openfreemap">OpenFreeMap</option>
+              <option value="gsi">地理院地図</option>
+            </select>
+          </label>
+          <button id="projection-toggle" class="map-tool-button" type="button" aria-pressed="true">
+            Globe
+          </button>
+          <button id="fit-data" class="map-tool-button" type="button">全地点</button>
+        </div>
+
+        <div class="map-legend" aria-label="凡例">
+          <span><i class="legend-dot sample"></i>水質測定</span>
+          <span><i class="legend-dot water"></i>水環境</span>
+          <span><i class="legend-dot other"></i>その他</span>
+        </div>
+
+        <div id="loading-panel" class="loading-panel" role="status">
+          <span class="spinner" aria-hidden="true"></span>
+          調査データを読み込んでいます
+        </div>
+        <div id="error-panel" class="error-panel" role="alert" hidden>
+          <strong>データを読み込めませんでした。</strong>
+          <span>HTTPサーバー経由で開き、ページを再読み込みしてください。</span>
+        </div>
+      </section>
+    </main>
+
+    <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
+
+    <script type="module" src="./app.js?v=0.1.0"></script>
+  </body>
+</html>
