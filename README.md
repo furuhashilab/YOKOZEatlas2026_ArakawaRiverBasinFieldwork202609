@@ -11,6 +11,7 @@
 ## 主な機能
 
 - MapLibre GL JSによるGlobe表示
+- MapterhornのTerrarium DEMによる3D地形・陰影表示（z0–z12はグローバルDEM、z13–z17は地域別高解像度DEMへ自動切り替え）
 - OpenFreeMapと地理院地図の切り替え
 - 名称、住所、備考の検索
 - 横瀬町・秩父市、地点分類、水質測定の有無による絞り込み
@@ -60,3 +61,4 @@ GitHubの `Settings` → `Pages` で次のように設定します。
 - 調査データ: **データライセンス確認中**
 - 背景地図: [OpenFreeMap](https://openfreemap.org/) / [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
 - 切り替え背景地図: [地理院タイル](https://maps.gsi.go.jp/development/ichiran.html)
+- 標高・地形タイル: [Mapterhorn](https://mapterhorn.com/attribution/)（Terrarium WebP / PMTiles）

@@ -2,6 +2,11 @@ import * as maplibregl from "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-
 
 const DATA_URL = "./data/YOKOZEatlas2026_morigawa_water_quality_v0.1.0.geojson";
 const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const MAPTERHORN_SOURCE_ID = "mapterhorn-dem";
+const MAPTERHORN_HILLSHADE_LAYER_ID = "mapterhorn-hillshade";
+const MAPTERHORN_ATTRIBUTION =
+  '<a href="https://mapterhorn.com/attribution" target="_blank" rel="noreferrer">© Mapterhorn</a>';
+const TERRAIN_EXAGGERATION = 1.18;
 const TOUR_INTERVAL_MS = 14000;
 const TOUR_OVERVIEW_ZOOM = 13;
 const TOUR_DETAIL_ZOOM = 18;
@@ -37,6 +42,23 @@ const GSI_STYLE = {
     },
   ],
 };
+
+const mapterhornProtocol = new window.pmtiles.Protocol({
+  metadata: true,
+  errorOnMissingTile: true,
+});
+
+maplibregl.addProtocol("mapterhorn", async (params, abortController) => {
+  const [z, x, y] = params.url.replace("mapterhorn://", "").split("/").map(Number);
+  const archiveName = z <= 12 ? "planet" : `6-${x >> (z - 6)}-${y >> (z - 6)}`;
+  const url = `pmtiles://https://download.mapterhorn.com/${archiveName}.pmtiles/${z}/${x}/${y}.webp`;
+  const response = await mapterhornProtocol.tile({ ...params, url }, abortController);
+
+  if (response.data === null) {
+    throw new Error(`Mapterhorn DEM tile not found: z=${z}, x=${x}, y=${y}`);
+  }
+  return response;
+});
 
 const CLASS_COLORS = {
   water_quality_sample: "#147b8d",
@@ -382,6 +404,48 @@ function addDataLayers() {
       "circle-opacity": 0.96,
     },
   });
+}
+
+function addTerrainLayers() {
+  if (!map.isStyleLoaded()) return;
+
+  if (!map.getSource(MAPTERHORN_SOURCE_ID)) {
+    map.addSource(MAPTERHORN_SOURCE_ID, {
+      type: "raster-dem",
+      tiles: ["mapterhorn://{z}/{x}/{y}"],
+      encoding: "terrarium",
+      tileSize: 512,
+      minzoom: 0,
+      maxzoom: 17,
+      attribution: MAPTERHORN_ATTRIBUTION,
+    });
+  }
+
+  map.setTerrain({
+    source: MAPTERHORN_SOURCE_ID,
+    exaggeration: TERRAIN_EXAGGERATION,
+  });
+
+  if (!map.getLayer(MAPTERHORN_HILLSHADE_LAYER_ID)) {
+    const firstSymbolLayer = map
+      .getStyle()
+      .layers?.find((layer) => layer.type === "symbol")?.id;
+    map.addLayer(
+      {
+        id: MAPTERHORN_HILLSHADE_LAYER_ID,
+        type: "hillshade",
+        source: MAPTERHORN_SOURCE_ID,
+        paint: {
+          "hillshade-exaggeration": 0.28,
+          "hillshade-shadow-color": "#183d3b",
+          "hillshade-highlight-color": "#f7f1df",
+          "hillshade-accent-color": "#58766d",
+          "hillshade-illumination-anchor": "map",
+        },
+      },
+      firstSymbolLayer,
+    );
+  }
 }
 
 function updateMapSource() {
@@ -1155,6 +1219,7 @@ async function initialize() {
 
   map.on("style.load", () => {
     setProjection();
+    addTerrainLayers();
     addDataLayers();
   });
 
