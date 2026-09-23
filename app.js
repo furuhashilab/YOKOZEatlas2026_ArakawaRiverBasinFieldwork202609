@@ -2,7 +2,9 @@ import * as maplibregl from "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-
 
 const DATA_URL = "./data/YOKOZEatlas2026_morigawa_water_quality_v0.1.0.geojson";
 const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
-const TOUR_INTERVAL_MS = 5500;
+const TOUR_INTERVAL_MS = 9000;
+const TOUR_CAMERA_DURATION_MS = 4600;
+const TOUR_POPUP_DELAY_MS = 3400;
 const GSI_STYLE = {
   version: 8,
   name: "地理院地図 標準地図",
@@ -75,6 +77,7 @@ const state = {
   tourPlaying: false,
   tourIndex: -1,
   tourTimer: null,
+  tourPopupTimer: null,
 };
 
 const elements = {
@@ -227,16 +230,24 @@ function buildPopupHtml(properties) {
   `;
 }
 
-function openFeature(feature, options = {}) {
+function showFeaturePopup(feature) {
   const coordinates = feature.geometry.coordinates;
   popup.setLngLat(coordinates).setHTML(buildPopupHtml(feature.properties)).addTo(map);
+}
+
+function openFeature(feature, options = {}) {
+  const coordinates = feature.geometry.coordinates;
+  if (options.showPopup !== false) showFeaturePopup(feature);
   if (options.fly !== false) {
     const cameraOptions = {
       center: coordinates,
       zoom: options.zoom ?? Math.max(map.getZoom(), 15),
       essential: options.essential ?? true,
     };
-    if (Number.isFinite(options.duration)) cameraOptions.duration = options.duration;
+    ["pitch", "bearing", "duration", "curve"].forEach((key) => {
+      if (Number.isFinite(options[key])) cameraOptions[key] = options[key];
+    });
+    if (typeof options.easing === "function") cameraOptions.easing = options.easing;
     map.flyTo(cameraOptions);
   }
   if (options.updateHash !== false) {
@@ -424,6 +435,18 @@ function clearTourTimer() {
   }
 }
 
+function clearTourPopupTimer() {
+  if (state.tourPopupTimer !== null) {
+    window.clearTimeout(state.tourPopupTimer);
+    state.tourPopupTimer = null;
+  }
+}
+
+function clearTourTimers() {
+  clearTourTimer();
+  clearTourPopupTimer();
+}
+
 function updateTourControls() {
   const count = state.filteredData?.features.length || 0;
   elements.tourPlay.disabled = !count || state.tourPlaying;
@@ -457,7 +480,7 @@ function setActiveResult(featureId, options = {}) {
 }
 
 function pauseTour(options = {}) {
-  clearTourTimer();
+  clearTourTimers();
   state.tourPlaying = false;
   map.stop();
   if (options.reset) {
@@ -469,6 +492,9 @@ function pauseTour(options = {}) {
     if (location.hash) {
       history.replaceState(null, "", `${location.pathname}${location.search}`);
     }
+  } else if (options.revealPopup) {
+    const feature = state.filteredData?.features[state.tourIndex];
+    if (feature) showFeaturePopup(feature);
   }
   updateTourControls();
 }
@@ -486,6 +512,31 @@ function scheduleNextTourFeature() {
   }, TOUR_INTERVAL_MS);
 }
 
+function smoothCameraEasing(progress) {
+  return progress < 0.5
+    ? 4 * progress * progress * progress
+    : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+}
+
+function wrapBearing(bearing) {
+  return ((bearing + 180) % 360 + 360) % 360 - 180;
+}
+
+function createTourCameraOptions() {
+  const direction = Math.random() < 0.5 ? -1 : 1;
+  const turn = 65 + Math.random() * 110;
+  return {
+    zoom: 15.25 + Math.random() * 0.55,
+    pitch: 56 + Math.random() * 9,
+    bearing: wrapBearing(map.getBearing() + direction * turn),
+    duration: TOUR_CAMERA_DURATION_MS,
+    curve: 1.55 + Math.random() * 0.25,
+    easing: smoothCameraEasing,
+    essential: false,
+    showPopup: false,
+  };
+}
+
 function showTourFeature(index) {
   const features = state.filteredData?.features || [];
   if (!features.length) {
@@ -495,9 +546,21 @@ function showTourFeature(index) {
 
   state.tourIndex = ((index % features.length) + features.length) % features.length;
   const feature = features[state.tourIndex];
-  openFeature(feature, { zoom: 15, duration: 1500, essential: false });
+  clearTourPopupTimer();
+  popup.remove();
+  openFeature(feature, createTourCameraOptions());
   setActiveResult(feature.properties.feature_id);
   updateTourControls();
+  state.tourPopupTimer = window.setTimeout(() => {
+    const currentFeature = state.filteredData?.features[state.tourIndex];
+    if (
+      state.tourPlaying &&
+      currentFeature?.properties.feature_id === feature.properties.feature_id
+    ) {
+      showFeaturePopup(feature);
+    }
+    state.tourPopupTimer = null;
+  }, TOUR_POPUP_DELAY_MS);
   scheduleNextTourFeature();
 }
 
@@ -640,7 +703,7 @@ function bindControls() {
   });
   elements.reset.addEventListener("click", resetFilters);
   elements.tourPlay.addEventListener("click", startTour);
-  elements.tourPause.addEventListener("click", () => pauseTour());
+  elements.tourPause.addEventListener("click", () => pauseTour({ revealPopup: true }));
   elements.fit.addEventListener("click", () => fitToFeatures());
   elements.basemap.addEventListener("change", (event) => switchBasemap(event.target.value));
   elements.projection.addEventListener("click", () => {
