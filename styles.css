@@ -448,6 +448,64 @@ a:focus-visible {
   font-size: 11px;
 }
 
+.tour-controls {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tour-button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid #aac4c5;
+  border-radius: 8px;
+  color: var(--teal-900);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.tour-button svg {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+
+.tour-button:hover:not(:disabled) {
+  border-color: var(--teal-700);
+  background: var(--teal-100);
+  box-shadow: 0 3px 10px rgb(20 81 88 / 10%);
+}
+
+.tour-button:focus-visible {
+  outline: 3px solid rgb(20 114 131 / 22%);
+  outline-offset: 2px;
+}
+
+.tour-button:disabled {
+  color: #90a1a3;
+  background: #f1f4f2;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.tour-status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 10px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .result-list {
   display: grid;
   gap: 7px;
@@ -469,6 +527,12 @@ a:focus-visible {
   border-color: #8db5b8;
   box-shadow: 0 5px 14px rgb(20 81 88 / 8%);
   transform: translateY(-1px);
+}
+
+.result-item.is-active {
+  border-color: var(--teal-700);
+  background: #eff9f8;
+  box-shadow: 0 0 0 2px rgb(20 114 131 / 12%);
 }
 
 .result-item-title {

@@ -2,6 +2,7 @@ import * as maplibregl from "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-
 
 const DATA_URL = "./data/YOKOZEatlas2026_morigawa_water_quality_v0.1.0.geojson";
 const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const TOUR_INTERVAL_MS = 5500;
 const GSI_STYLE = {
   version: 8,
   name: "地理院地図 標準地図",
@@ -71,6 +72,9 @@ const state = {
   projection: "globe",
   basemap: "openfreemap",
   interactionsBound: false,
+  tourPlaying: false,
+  tourIndex: -1,
+  tourTimer: null,
 };
 
 const elements = {
@@ -84,6 +88,9 @@ const elements = {
   reset: document.querySelector("#reset-filters"),
   resultList: document.querySelector("#result-list"),
   resultCount: document.querySelector("#result-count"),
+  tourPlay: document.querySelector("#tour-play"),
+  tourPause: document.querySelector("#tour-pause"),
+  tourStatus: document.querySelector("#tour-status"),
   statVisible: document.querySelector("#stat-visible"),
   statMeasured: document.querySelector("#stat-measured"),
   statYokoze: document.querySelector("#stat-yokoze"),
@@ -224,7 +231,13 @@ function openFeature(feature, options = {}) {
   const coordinates = feature.geometry.coordinates;
   popup.setLngLat(coordinates).setHTML(buildPopupHtml(feature.properties)).addTo(map);
   if (options.fly !== false) {
-    map.flyTo({ center: coordinates, zoom: Math.max(map.getZoom(), 15), essential: true });
+    const cameraOptions = {
+      center: coordinates,
+      zoom: options.zoom ?? Math.max(map.getZoom(), 15),
+      essential: options.essential ?? true,
+    };
+    if (Number.isFinite(options.duration)) cameraOptions.duration = options.duration;
+    map.flyTo(cameraOptions);
   }
   if (options.updateHash !== false) {
     history.replaceState(null, "", `#${encodeURIComponent(feature.properties.feature_id)}`);
@@ -379,6 +392,7 @@ function filterData() {
   });
 
   state.filteredData = { ...state.data, features };
+  pauseTour({ reset: true, closePopup: true });
   updateMapSource();
   updateSummary(features);
   renderResults(features);
@@ -403,6 +417,99 @@ function dotClass(featureClass) {
   return "other";
 }
 
+function clearTourTimer() {
+  if (state.tourTimer !== null) {
+    window.clearTimeout(state.tourTimer);
+    state.tourTimer = null;
+  }
+}
+
+function updateTourControls() {
+  const count = state.filteredData?.features.length || 0;
+  elements.tourPlay.disabled = !count || state.tourPlaying;
+  elements.tourPause.disabled = !state.tourPlaying;
+
+  if (!count) {
+    elements.tourStatus.textContent = "対象地点なし";
+  } else if (state.tourIndex >= 0 && state.tourIndex < count) {
+    const status = state.tourPlaying ? "再生中" : "一時停止中";
+    elements.tourStatus.textContent = `${status} ${state.tourIndex + 1} / ${count}`;
+  } else {
+    elements.tourStatus.textContent = `${count}地点`;
+  }
+}
+
+function setActiveResult(featureId, options = {}) {
+  let activeButton = null;
+  elements.resultList.querySelectorAll(".result-item").forEach((button) => {
+    const isActive = button.dataset.featureId === featureId;
+    button.classList.toggle("is-active", isActive);
+    if (isActive) {
+      button.setAttribute("aria-current", "location");
+      activeButton = button;
+    } else {
+      button.removeAttribute("aria-current");
+    }
+  });
+  if (activeButton && options.scroll !== false) {
+    activeButton.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+function pauseTour(options = {}) {
+  clearTourTimer();
+  state.tourPlaying = false;
+  map.stop();
+  if (options.reset) {
+    state.tourIndex = -1;
+    setActiveResult(null, { scroll: false });
+  }
+  if (options.closePopup) {
+    popup.remove();
+    if (location.hash) {
+      history.replaceState(null, "", `${location.pathname}${location.search}`);
+    }
+  }
+  updateTourControls();
+}
+
+function scheduleNextTourFeature() {
+  clearTourTimer();
+  if (!state.tourPlaying) return;
+  state.tourTimer = window.setTimeout(() => {
+    const count = state.filteredData?.features.length || 0;
+    if (!count) {
+      pauseTour({ reset: true });
+      return;
+    }
+    showTourFeature((state.tourIndex + 1) % count);
+  }, TOUR_INTERVAL_MS);
+}
+
+function showTourFeature(index) {
+  const features = state.filteredData?.features || [];
+  if (!features.length) {
+    pauseTour({ reset: true });
+    return;
+  }
+
+  state.tourIndex = ((index % features.length) + features.length) % features.length;
+  const feature = features[state.tourIndex];
+  openFeature(feature, { zoom: 15, duration: 1500, essential: false });
+  setActiveResult(feature.properties.feature_id);
+  updateTourControls();
+  scheduleNextTourFeature();
+}
+
+function startTour() {
+  const count = state.filteredData?.features.length || 0;
+  if (!count || state.tourPlaying) return;
+  state.tourPlaying = true;
+  const nextIndex = state.tourIndex >= 0 ? (state.tourIndex + 1) % count : 0;
+  showTourFeature(nextIndex);
+  closeSidebar();
+}
+
 function renderResults(features) {
   elements.resultList.replaceChildren();
   if (!features.length) {
@@ -410,15 +517,17 @@ function renderResults(features) {
     empty.className = "empty-results";
     empty.textContent = "条件に合う地点はありません。";
     elements.resultList.append(empty);
+    updateTourControls();
     return;
   }
 
   const fragment = document.createDocumentFragment();
-  features.forEach((feature) => {
+  features.forEach((feature, index) => {
     const properties = feature.properties;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "result-item";
+    button.dataset.featureId = properties.feature_id;
     button.innerHTML = `
       <span class="result-item-title">
         <i class="legend-dot ${dotClass(properties.feature_class)}" aria-hidden="true"></i>
@@ -429,12 +538,17 @@ function renderResults(features) {
       </span>
     `;
     button.addEventListener("click", () => {
+      pauseTour();
+      state.tourIndex = index;
       openFeature(feature);
+      setActiveResult(properties.feature_id);
+      updateTourControls();
       closeSidebar();
     });
     fragment.append(button);
   });
   elements.resultList.append(fragment);
+  updateTourControls();
 }
 
 function resetFilters() {
@@ -469,6 +583,7 @@ function setProjection() {
 }
 
 function switchBasemap(value) {
+  pauseTour();
   state.basemap = value;
   popup.remove();
   map.setStyle(value === "gsi" ? GSI_STYLE : OPENFREEMAP_STYLE);
@@ -476,6 +591,7 @@ function switchBasemap(value) {
 
 function bindMapInteractions() {
   map.on("click", "clusters", async (event) => {
+    pauseTour();
     const feature = map.queryRenderedFeatures(event.point, { layers: ["clusters"] })[0];
     if (!feature) return;
     const source = map.getSource("fieldwork");
@@ -484,13 +600,21 @@ function bindMapInteractions() {
   });
 
   map.on("click", "unclustered-point", (event) => {
+    pauseTour();
     const renderedFeature = event.features?.[0];
     if (!renderedFeature) return;
     const featureId = renderedFeature.properties.feature_id;
     const sourceFeature = state.data.features.find(
       (feature) => feature.properties.feature_id === featureId,
     );
-    if (sourceFeature) openFeature(sourceFeature, { fly: false });
+    if (sourceFeature) {
+      state.tourIndex = state.filteredData.features.findIndex(
+        (feature) => feature.properties.feature_id === featureId,
+      );
+      openFeature(sourceFeature, { fly: false });
+      setActiveResult(featureId);
+      updateTourControls();
+    }
   });
 
   ["clusters", "unclustered-point"].forEach((layerId) => {
@@ -515,6 +639,8 @@ function bindControls() {
     input.addEventListener(input === elements.search ? "input" : "change", filterData);
   });
   elements.reset.addEventListener("click", resetFilters);
+  elements.tourPlay.addEventListener("click", startTour);
+  elements.tourPause.addEventListener("click", () => pauseTour());
   elements.fit.addEventListener("click", () => fitToFeatures());
   elements.basemap.addEventListener("change", (event) => switchBasemap(event.target.value));
   elements.projection.addEventListener("click", () => {
@@ -528,6 +654,9 @@ function bindControls() {
   elements.sidebarScrim.addEventListener("click", closeSidebar);
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeSidebar();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && state.tourPlaying) pauseTour();
   });
 }
 

@@ -21,7 +21,7 @@
       rel="stylesheet"
       href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css"
     />
-    <link rel="stylesheet" href="./styles.css?v=0.5.0" />
+    <link rel="stylesheet" href="./styles.css?v=0.5.1" />
   </head>
   <body>
     <a class="skip-link" href="#map">地図へ移動</a>
@@ -33,7 +33,7 @@
           <p class="eyebrow">YOKOZE Atlas 2026 / MORIGAWA</p>
           <h1>
             <span class="title-text">荒川流域圏構想フィールドワーク</span>
-            <span class="version-label">v0.5.0</span>
+            <span class="version-label">v0.5.1</span>
           </h1>
         </div>
       </div>
@@ -146,6 +146,21 @@
             <h2 id="result-title">地点一覧</h2>
             <span id="result-count" class="result-count">—</span>
           </div>
+          <div class="tour-controls" role="group" aria-label="地点の自動巡回">
+            <button id="tour-play" class="tour-button" type="button" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m8 5 11 7-11 7Z" />
+              </svg>
+              再生
+            </button>
+            <button id="tour-pause" class="tour-button" type="button" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 5h4v14H7zm6 0h4v14h-4z" />
+              </svg>
+              一時停止
+            </button>
+            <span id="tour-status" class="tour-status" aria-live="polite">読み込み中</span>
+          </div>
           <div id="result-list" class="result-list" aria-live="polite"></div>
         </section>
 
@@ -196,6 +211,6 @@
 
     <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
 
-    <script type="module" src="./app.js?v=0.1.0"></script>
+    <script type="module" src="./app.js?v=0.5.1"></script>
   </body>
 </html>
