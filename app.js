@@ -194,6 +194,16 @@ const popup = new maplibregl.Popup({
   offset: 13,
 });
 
+let styleLayerRestoreTimer = null;
+
+function scheduleStyleLayerRestore() {
+  window.clearTimeout(styleLayerRestoreTimer);
+  styleLayerRestoreTimer = window.setTimeout(() => {
+    styleLayerRestoreTimer = null;
+    restoreStyleLayers();
+  }, 120);
+}
+
 function hasValue(value) {
   return value !== null && value !== undefined && value !== "";
 }
@@ -416,7 +426,9 @@ function addTerrainLayers() {
       encoding: "terrarium",
       tileSize: 512,
       minzoom: 0,
-      maxzoom: 17,
+      // The regional archive around the fieldwork area has sparse z17 gaps.
+      // Overzoom z16 above that level to keep the terrain surface continuous.
+      maxzoom: 16,
       attribution: MAPTERHORN_ATTRIBUTION,
     });
   }
@@ -436,7 +448,8 @@ function addTerrainLayers() {
         type: "hillshade",
         source: MAPTERHORN_SOURCE_ID,
         paint: {
-          "hillshade-exaggeration": 0.28,
+          "hillshade-method": "igor",
+          "hillshade-exaggeration": 0.48,
           "hillshade-shadow-color": "#183d3b",
           "hillshade-highlight-color": "#f7f1df",
           "hillshade-accent-color": "#58766d",
@@ -446,6 +459,19 @@ function addTerrainLayers() {
       firstSymbolLayer,
     );
   }
+}
+
+function restoreStyleLayers() {
+  if (!map.isStyleLoaded()) {
+    scheduleStyleLayerRestore();
+    return;
+  }
+  if (map.getProjection()?.type !== state.projection) {
+    setProjection();
+    return;
+  }
+  addTerrainLayers();
+  addDataLayers();
 }
 
 function updateMapSource() {
@@ -1100,7 +1126,10 @@ function closeSidebar() {
 
 function setProjection() {
   if (!map.isStyleLoaded()) return;
-  map.setProjection({ type: state.projection });
+  if (map.getProjection()?.type !== state.projection) {
+    map.setProjection({ type: state.projection });
+    scheduleStyleLayerRestore();
+  }
   elements.projection.textContent = state.projection === "globe" ? "Globe" : "2D";
   elements.projection.setAttribute("aria-pressed", String(state.projection === "globe"));
 }
@@ -1217,11 +1246,13 @@ async function initialize() {
   populateChartControls();
   bindControls();
 
-  map.on("style.load", () => {
-    setProjection();
-    addTerrainLayers();
-    addDataLayers();
-  });
+  // `style.load` can fire before this module finishes initializing when a
+  // remote style is already cached. `load` covers the initial style, while
+  // `style.load` restores terrain and data after later basemap switches.
+  map.once("load", restoreStyleLayers);
+  map.on("style.load", restoreStyleLayers);
+  map.on("styledata", restoreStyleLayers);
+  if (map.isStyleLoaded()) restoreStyleLayers();
 
   try {
     const [data] = await Promise.all([
