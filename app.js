@@ -2,9 +2,13 @@ import * as maplibregl from "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-
 
 const DATA_URL = "./data/YOKOZEatlas2026_morigawa_water_quality_v0.1.0.geojson";
 const OPENFREEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
-const TOUR_INTERVAL_MS = 9000;
-const TOUR_CAMERA_DURATION_MS = 4600;
-const TOUR_POPUP_DELAY_MS = 3400;
+const TOUR_INTERVAL_MS = 14000;
+const TOUR_OVERVIEW_ZOOM = 13;
+const TOUR_DETAIL_ZOOM = 18;
+const TOUR_OVERVIEW_DURATION_MS = 3600;
+const TOUR_DETAIL_START_MS = 4400;
+const TOUR_DETAIL_DURATION_MS = 4800;
+const TOUR_POPUP_DELAY_MS = 9300;
 const GSI_STYLE = {
   version: 8,
   name: "地理院地図 標準地図",
@@ -76,7 +80,9 @@ const state = {
   interactionsBound: false,
   tourPlaying: false,
   tourIndex: -1,
+  tourPhase: null,
   tourTimer: null,
+  tourZoomTimer: null,
   tourPopupTimer: null,
 };
 
@@ -248,7 +254,8 @@ function openFeature(feature, options = {}) {
       if (Number.isFinite(options[key])) cameraOptions[key] = options[key];
     });
     if (typeof options.easing === "function") cameraOptions.easing = options.easing;
-    map.flyTo(cameraOptions);
+    if (options.motion === "ease") map.easeTo(cameraOptions);
+    else map.flyTo(cameraOptions);
   }
   if (options.updateHash !== false) {
     history.replaceState(null, "", `#${encodeURIComponent(feature.properties.feature_id)}`);
@@ -442,8 +449,16 @@ function clearTourPopupTimer() {
   }
 }
 
+function clearTourZoomTimer() {
+  if (state.tourZoomTimer !== null) {
+    window.clearTimeout(state.tourZoomTimer);
+    state.tourZoomTimer = null;
+  }
+}
+
 function clearTourTimers() {
   clearTourTimer();
+  clearTourZoomTimer();
   clearTourPopupTimer();
 }
 
@@ -455,7 +470,14 @@ function updateTourControls() {
   if (!count) {
     elements.tourStatus.textContent = "対象地点なし";
   } else if (state.tourIndex >= 0 && state.tourIndex < count) {
-    const status = state.tourPlaying ? "再生中" : "一時停止中";
+    const phaseLabels = {
+      overview: "全体表示",
+      detail: "ズーム中",
+      arrived: "表示中",
+    };
+    const status = state.tourPlaying
+      ? phaseLabels[state.tourPhase] || "再生中"
+      : "一時停止中";
     elements.tourStatus.textContent = `${status} ${state.tourIndex + 1} / ${count}`;
   } else {
     elements.tourStatus.textContent = `${count}地点`;
@@ -485,6 +507,7 @@ function pauseTour(options = {}) {
   map.stop();
   if (options.reset) {
     state.tourIndex = -1;
+    state.tourPhase = null;
     setActiveResult(null, { scroll: false });
   }
   if (options.closePopup) {
@@ -525,15 +548,30 @@ function wrapBearing(bearing) {
 function createTourCameraOptions() {
   const direction = Math.random() < 0.5 ? -1 : 1;
   const turn = 65 + Math.random() * 110;
+  const overviewBearing = wrapBearing(map.getBearing() + direction * turn);
+  const detailBearing = wrapBearing(overviewBearing + (Math.random() - 0.5) * 24);
   return {
-    zoom: 15.25 + Math.random() * 0.55,
-    pitch: 56 + Math.random() * 9,
-    bearing: wrapBearing(map.getBearing() + direction * turn),
-    duration: TOUR_CAMERA_DURATION_MS,
-    curve: 1.55 + Math.random() * 0.25,
-    easing: smoothCameraEasing,
-    essential: false,
-    showPopup: false,
+    overview: {
+      zoom: TOUR_OVERVIEW_ZOOM,
+      pitch: 42 + Math.random() * 7,
+      bearing: overviewBearing,
+      duration: TOUR_OVERVIEW_DURATION_MS,
+      curve: 1.55 + Math.random() * 0.25,
+      easing: smoothCameraEasing,
+      essential: false,
+      showPopup: false,
+    },
+    detail: {
+      zoom: TOUR_DETAIL_ZOOM,
+      pitch: 58 + Math.random() * 7,
+      bearing: detailBearing,
+      duration: TOUR_DETAIL_DURATION_MS,
+      easing: smoothCameraEasing,
+      essential: false,
+      showPopup: false,
+      updateHash: false,
+      motion: "ease",
+    },
   };
 }
 
@@ -545,19 +583,36 @@ function showTourFeature(index) {
   }
 
   state.tourIndex = ((index % features.length) + features.length) % features.length;
+  state.tourPhase = "overview";
   const feature = features[state.tourIndex];
+  const camera = createTourCameraOptions();
+  clearTourZoomTimer();
   clearTourPopupTimer();
   popup.remove();
-  openFeature(feature, createTourCameraOptions());
+  openFeature(feature, camera.overview);
   setActiveResult(feature.properties.feature_id);
   updateTourControls();
+  state.tourZoomTimer = window.setTimeout(() => {
+    const currentFeature = state.filteredData?.features[state.tourIndex];
+    if (
+      state.tourPlaying &&
+      currentFeature?.properties.feature_id === feature.properties.feature_id
+    ) {
+      state.tourPhase = "detail";
+      openFeature(feature, camera.detail);
+      updateTourControls();
+    }
+    state.tourZoomTimer = null;
+  }, TOUR_DETAIL_START_MS);
   state.tourPopupTimer = window.setTimeout(() => {
     const currentFeature = state.filteredData?.features[state.tourIndex];
     if (
       state.tourPlaying &&
       currentFeature?.properties.feature_id === feature.properties.feature_id
     ) {
+      state.tourPhase = "arrived";
       showFeaturePopup(feature);
+      updateTourControls();
     }
     state.tourPopupTimer = null;
   }, TOUR_POPUP_DELAY_MS);
@@ -735,11 +790,13 @@ async function loadData() {
 
 function openHashFeature() {
   const featureId = decodeURIComponent(location.hash.replace(/^#/, ""));
-  if (!featureId || !state.data) return;
+  if (!featureId || !state.data) return false;
   const feature = state.data.features.find(
     (item) => item.properties.feature_id === featureId,
   );
-  if (feature) window.setTimeout(() => openFeature(feature), 300);
+  if (!feature) return false;
+  window.setTimeout(() => openFeature(feature), 300);
+  return true;
 }
 
 async function initialize() {
@@ -765,7 +822,7 @@ async function initialize() {
     renderResults(data.features);
     fitToFeatures(data.features);
     elements.loading.hidden = true;
-    openHashFeature();
+    if (!openHashFeature()) startTour();
   } catch (error) {
     console.error(error);
     elements.loading.hidden = true;
