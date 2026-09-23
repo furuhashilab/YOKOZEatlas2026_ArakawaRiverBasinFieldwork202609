@@ -21,7 +21,7 @@
       rel="stylesheet"
       href="https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css"
     />
-    <link rel="stylesheet" href="./styles.css?v=0.5.3" />
+    <link rel="stylesheet" href="./styles.css?v=0.5.4" />
   </head>
   <body>
     <a class="skip-link" href="#map">地図へ移動</a>
@@ -33,7 +33,7 @@
           <p class="eyebrow">YOKOZE Atlas 2026 / MORIGAWA</p>
           <h1>
             <span class="title-text">荒川流域圏構想フィールドワーク</span>
-            <span class="version-label">v0.5.3</span>
+            <span class="version-label">v0.5.4</span>
           </h1>
         </div>
       </div>
@@ -87,6 +87,44 @@
             <span id="stat-cfg" class="stat-value">—</span>
             <span class="stat-label">CfG統合</span>
           </div>
+        </section>
+
+        <section class="chart-panel" aria-labelledby="chart-title">
+          <div class="section-heading chart-heading">
+            <h2 id="chart-title">統計グラフ</h2>
+            <div class="chart-mode-switch" role="group" aria-label="グラフの種類">
+              <button class="chart-mode-button is-active" type="button" data-chart-mode="histogram" aria-pressed="true">
+                ヒストグラム
+              </button>
+              <button class="chart-mode-button" type="button" data-chart-mode="scatter" aria-pressed="false">
+                散布図
+              </button>
+            </div>
+          </div>
+
+          <div id="histogram-controls" class="chart-fields">
+            <label for="histogram-field">列名</label>
+            <select id="histogram-field" aria-label="ヒストグラムの列名"></select>
+          </div>
+
+          <div id="scatter-controls" class="chart-fields chart-fields-pair" hidden>
+            <label for="scatter-x-field">横軸
+              <select id="scatter-x-field" aria-label="散布図の横軸"></select>
+            </label>
+            <label for="scatter-y-field">縦軸
+              <select id="scatter-y-field" aria-label="散布図の縦軸"></select>
+            </label>
+          </div>
+
+          <div class="chart-frame">
+            <svg
+              id="statistics-chart"
+              viewBox="0 0 330 190"
+              role="img"
+              aria-label="統計グラフを読み込み中"
+            ></svg>
+          </div>
+          <div id="statistics-summary" class="statistics-summary" aria-live="polite"></div>
         </section>
 
         <section class="filters" aria-labelledby="filter-title">
@@ -211,6 +249,6 @@
 
     <div id="sidebar-scrim" class="sidebar-scrim" hidden></div>
 
-    <script type="module" src="./app.js?v=0.5.3"></script>
+    <script type="module" src="./app.js?v=0.5.4"></script>
   </body>
 </html>

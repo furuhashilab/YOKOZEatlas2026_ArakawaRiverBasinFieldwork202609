@@ -72,6 +72,27 @@ const QC_LABELS = {
   cfg_name_alias_reviewed: "異名の同一採水地点として確認済み",
 };
 
+const NUMERIC_FIELDS = [
+  { key: "elevation_field_m", label: "現地標高", unit: "m" },
+  { key: "water_temp_field_c", label: "現地水温", unit: "℃" },
+  { key: "conductivity_field_us_cm", label: "現地電気伝導度", unit: "μS/cm" },
+  { key: "ph_field", label: "現地pH", unit: "" },
+  { key: "rph_field", label: "現地RpH", unit: "" },
+  { key: "ph_difference", label: "RpH - pH", unit: "" },
+  { key: "cfg_match_distance_m", label: "CfGマッチ距離", unit: "m" },
+  { key: "cfg_elevation_m", label: "CfG標高", unit: "m" },
+  { key: "elevation_difference_m", label: "標高差", unit: "m" },
+  { key: "nitrate_mg_l", label: "硝酸濃度", unit: "mg/L" },
+  { key: "nitrate_mv", label: "硝酸センサー電圧", unit: "mV" },
+  { key: "water_temp_cfg_c", label: "CfG水温", unit: "℃" },
+  { key: "conductivity_cfg_us_cm", label: "CfG電気伝導度", unit: "μS/cm" },
+  { key: "ph_cfg", label: "CfG pH", unit: "" },
+  { key: "ph_cfg_retest", label: "CfG pH再測定", unit: "" },
+  { key: "orp_mv", label: "ORP", unit: "mV" },
+];
+
+const NUMERIC_FIELD_MAP = new Map(NUMERIC_FIELDS.map((field) => [field.key, field]));
+
 const state = {
   data: null,
   filteredData: null,
@@ -84,6 +105,8 @@ const state = {
   tourTimer: null,
   tourZoomTimer: null,
   tourPopupTimer: null,
+  chartMode: "histogram",
+  activeFeatureId: null,
 };
 
 const elements = {
@@ -104,6 +127,14 @@ const elements = {
   statMeasured: document.querySelector("#stat-measured"),
   statYokoze: document.querySelector("#stat-yokoze"),
   statCfg: document.querySelector("#stat-cfg"),
+  chartModeButtons: [...document.querySelectorAll("[data-chart-mode]")],
+  histogramControls: document.querySelector("#histogram-controls"),
+  histogramField: document.querySelector("#histogram-field"),
+  scatterControls: document.querySelector("#scatter-controls"),
+  scatterXField: document.querySelector("#scatter-x-field"),
+  scatterYField: document.querySelector("#scatter-y-field"),
+  statisticsChart: document.querySelector("#statistics-chart"),
+  statisticsSummary: document.querySelector("#statistics-summary"),
   basemap: document.querySelector("#basemap-select"),
   projection: document.querySelector("#projection-toggle"),
   fit: document.querySelector("#fit-data"),
@@ -243,6 +274,8 @@ function showFeaturePopup(feature) {
 
 function openFeature(feature, options = {}) {
   const coordinates = feature.geometry.coordinates;
+  state.activeFeatureId = feature.properties.feature_id;
+  renderStatisticsPanel();
   if (options.showPopup !== false) showFeaturePopup(feature);
   if (options.fly !== false) {
     const cameraOptions = {
@@ -414,6 +447,7 @@ function filterData() {
   updateMapSource();
   updateSummary(features);
   renderResults(features);
+  renderStatisticsPanel();
 }
 
 function updateSummary(features) {
@@ -427,6 +461,311 @@ function updateSummary(features) {
   );
   elements.statCfg.textContent = String(properties.filter((item) => item.cfg_matched).length);
   elements.resultCount.textContent = `${features.length}件`;
+}
+
+function fieldDisplayName(field) {
+  return field.unit ? `${field.label} (${field.unit})` : field.label;
+}
+
+function numericValue(feature, key) {
+  const value = Number(feature.properties[key]);
+  return feature.properties[key] !== null &&
+    feature.properties[key] !== "" &&
+    Number.isFinite(value)
+    ? value
+    : null;
+}
+
+function formatChartNumber(value) {
+  if (!Number.isFinite(value)) return "—";
+  const absolute = Math.abs(value);
+  const digits = absolute >= 100 ? 1 : absolute >= 10 ? 2 : 3;
+  return formatNumber(value, digits);
+}
+
+function calculateStatistics(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const middle = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+  const variance =
+    values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
+  return {
+    mean,
+    median,
+    standardDeviation: Math.sqrt(variance),
+    maximum: sorted.at(-1),
+    minimum: sorted[0],
+  };
+}
+
+function chartDomain(values) {
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  if (minimum === maximum) {
+    const padding = Math.max(Math.abs(minimum) * 0.08, 1);
+    return [minimum - padding, maximum + padding];
+  }
+  const padding = (maximum - minimum) * 0.06;
+  return [minimum - padding, maximum + padding];
+}
+
+function renderEmptyChart(message) {
+  elements.statisticsChart.innerHTML = `
+    <text class="chart-empty-label" x="165" y="95" text-anchor="middle">
+      ${escapeHtml(message)}
+    </text>
+  `;
+  elements.statisticsChart.setAttribute("aria-label", message);
+}
+
+function renderHistogram(features, field) {
+  const data = features
+    .map((feature) => ({ feature, value: numericValue(feature, field.key) }))
+    .filter((item) => item.value !== null);
+  if (!data.length) {
+    renderEmptyChart(`${fieldDisplayName(field)}の数値データがありません`);
+    return;
+  }
+
+  const width = 330;
+  const height = 190;
+  const margin = { top: 14, right: 12, bottom: 34, left: 38 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const values = data.map((item) => item.value);
+  const [domainMin, domainMax] = chartDomain(values);
+  const binCount = Math.min(8, Math.max(4, Math.ceil(Math.sqrt(data.length))));
+  const binSize = (domainMax - domainMin) / binCount;
+  const bins = Array.from({ length: binCount }, (_, index) => ({
+    start: domainMin + index * binSize,
+    end: domainMin + (index + 1) * binSize,
+    items: [],
+  }));
+  data.forEach((item) => {
+    const index = Math.min(binCount - 1, Math.max(0, Math.floor((item.value - domainMin) / binSize)));
+    bins[index].items.push(item);
+  });
+  const maxCount = Math.max(...bins.map((bin) => bin.items.length), 1);
+  const barSlot = plotWidth / binCount;
+  const bars = bins
+    .map((bin, index) => {
+      const count = bin.items.length;
+      const barHeight = (count / maxCount) * plotHeight;
+      const active = bin.items.some(
+        (item) => item.feature.properties.feature_id === state.activeFeatureId,
+      );
+      return `
+        <rect
+          class="chart-bar${active ? " is-current" : ""}"
+          x="${margin.left + index * barSlot + 1}"
+          y="${margin.top + plotHeight - barHeight}"
+          width="${Math.max(barSlot - 2, 1)}"
+          height="${barHeight}"
+          rx="2"
+        ><title>${escapeHtml(`${formatChartNumber(bin.start)}〜${formatChartNumber(bin.end)}: ${count}地点`)}</title></rect>
+      `;
+    })
+    .join("");
+
+  const xTicks = [domainMin, (domainMin + domainMax) / 2, domainMax]
+    .map((value, index) => {
+      const x = margin.left + (index / 2) * plotWidth;
+      return `<text class="chart-tick" x="${x}" y="${height - 17}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml(formatChartNumber(value))}</text>`;
+    })
+    .join("");
+  const yTicks = [0, Math.ceil(maxCount / 2), maxCount]
+    .filter((value, index, array) => array.indexOf(value) === index)
+    .map((value) => {
+      const y = margin.top + plotHeight - (value / maxCount) * plotHeight;
+      return `
+        <line class="chart-grid-line" x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" />
+        <text class="chart-tick" x="${margin.left - 6}" y="${y + 3}" text-anchor="end">${value}</text>
+      `;
+    })
+    .join("");
+  const activeItem = data.find(
+    (item) => item.feature.properties.feature_id === state.activeFeatureId,
+  );
+  const activeMarker = activeItem
+    ? (() => {
+        const x =
+          margin.left + ((activeItem.value - domainMin) / (domainMax - domainMin)) * plotWidth;
+        return `
+          <line class="chart-current-line" x1="${x}" y1="${margin.top}" x2="${x}" y2="${margin.top + plotHeight}" />
+          <circle class="chart-current-dot" cx="${x}" cy="${margin.top + 7}" r="5">
+            <title>${escapeHtml(`${activeItem.feature.properties.name}: ${formatChartNumber(activeItem.value)}`)}</title>
+          </circle>
+        `;
+      })()
+    : "";
+
+  elements.statisticsChart.innerHTML = `
+    ${yTicks}
+    <line class="chart-axis" x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${width - margin.right}" y2="${margin.top + plotHeight}" />
+    <line class="chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" />
+    ${bars}
+    ${activeMarker}
+    ${xTicks}
+    <text class="chart-axis-label" x="${width / 2}" y="${height - 3}" text-anchor="middle">${escapeHtml(fieldDisplayName(field))}</text>
+  `;
+  elements.statisticsChart.setAttribute(
+    "aria-label",
+    `${fieldDisplayName(field)}のヒストグラム、${data.length}地点`,
+  );
+}
+
+function renderScatterPlot(features, xField, yField) {
+  const data = features
+    .map((feature) => ({
+      feature,
+      x: numericValue(feature, xField.key),
+      y: numericValue(feature, yField.key),
+    }))
+    .filter((item) => item.x !== null && item.y !== null);
+  if (!data.length) {
+    renderEmptyChart("両軸に数値がある地点はありません");
+    return;
+  }
+
+  const width = 330;
+  const height = 190;
+  const margin = { top: 13, right: 13, bottom: 37, left: 42 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const [xMin, xMax] = chartDomain(data.map((item) => item.x));
+  const [yMin, yMax] = chartDomain(data.map((item) => item.y));
+  const xPosition = (value) => margin.left + ((value - xMin) / (xMax - xMin)) * plotWidth;
+  const yPosition = (value) => margin.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight;
+  const xTicks = [xMin, (xMin + xMax) / 2, xMax];
+  const yTicks = [yMin, (yMin + yMax) / 2, yMax];
+  const grid = [0, 1, 2]
+    .map((index) => {
+      const x = margin.left + (index / 2) * plotWidth;
+      const y = margin.top + (index / 2) * plotHeight;
+      return `
+        <line class="chart-grid-line" x1="${x}" y1="${margin.top}" x2="${x}" y2="${margin.top + plotHeight}" />
+        <line class="chart-grid-line" x1="${margin.left}" y1="${y}" x2="${margin.left + plotWidth}" y2="${y}" />
+      `;
+    })
+    .join("");
+  const xTickLabels = xTicks
+    .map((value, index) => {
+      const x = margin.left + (index / 2) * plotWidth;
+      return `<text class="chart-tick" x="${x}" y="${height - 20}" text-anchor="${index === 0 ? "start" : index === 2 ? "end" : "middle"}">${escapeHtml(formatChartNumber(value))}</text>`;
+    })
+    .join("");
+  const yTickLabels = yTicks
+    .map((value, index) => {
+      const y = margin.top + plotHeight - (index / 2) * plotHeight;
+      return `<text class="chart-tick" x="${margin.left - 6}" y="${y + 3}" text-anchor="end">${escapeHtml(formatChartNumber(value))}</text>`;
+    })
+    .join("");
+  const points = data
+    .map((item) => {
+      const active = item.feature.properties.feature_id === state.activeFeatureId;
+      return `
+        <circle
+          class="chart-point${active ? " is-current" : ""}"
+          cx="${xPosition(item.x)}"
+          cy="${yPosition(item.y)}"
+          r="${active ? 6 : 3.7}"
+        ><title>${escapeHtml(`${item.feature.properties.name}: X=${formatChartNumber(item.x)}, Y=${formatChartNumber(item.y)}`)}</title></circle>
+      `;
+    })
+    .join("");
+
+  elements.statisticsChart.innerHTML = `
+    ${grid}
+    <line class="chart-axis" x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${margin.left + plotWidth}" y2="${margin.top + plotHeight}" />
+    <line class="chart-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" />
+    ${points}
+    ${xTickLabels}
+    ${yTickLabels}
+    <text class="chart-axis-label" x="${margin.left + plotWidth / 2}" y="${height - 3}" text-anchor="middle">X: ${escapeHtml(xField.label)}</text>
+    <text class="chart-axis-label" x="11" y="${margin.top + plotHeight / 2}" text-anchor="middle" transform="rotate(-90 11 ${margin.top + plotHeight / 2})">Y: ${escapeHtml(yField.label)}</text>
+  `;
+  elements.statisticsChart.setAttribute(
+    "aria-label",
+    `${fieldDisplayName(xField)}と${fieldDisplayName(yField)}の散布図、${data.length}地点`,
+  );
+}
+
+function statisticsBlock(field, features) {
+  const values = features
+    .map((feature) => numericValue(feature, field.key))
+    .filter((value) => value !== null);
+  const statistics = calculateStatistics(values);
+  const metrics = statistics
+    ? [
+        ["平均値", statistics.mean],
+        ["中央値", statistics.median],
+        ["標準偏差", statistics.standardDeviation],
+        ["最大値", statistics.maximum],
+        ["最小値", statistics.minimum],
+      ]
+    : [
+        ["平均値", null],
+        ["中央値", null],
+        ["標準偏差", null],
+        ["最大値", null],
+        ["最小値", null],
+      ];
+  return `
+    <section class="statistics-block">
+      <p class="statistics-block-title">${escapeHtml(fieldDisplayName(field))} / n=${values.length}</p>
+      <dl class="statistics-values">
+        ${metrics
+          .map(
+            ([label, value]) => `
+              <div><dt>${label}</dt><dd title="${escapeHtml(formatChartNumber(value))}">${escapeHtml(formatChartNumber(value))}</dd></div>
+            `,
+          )
+          .join("")}
+      </dl>
+    </section>
+  `;
+}
+
+function renderStatisticsPanel() {
+  if (!state.filteredData) return;
+  const features = state.filteredData.features;
+  const histogramField =
+    NUMERIC_FIELD_MAP.get(elements.histogramField.value) || NUMERIC_FIELDS[0];
+  const xField = NUMERIC_FIELD_MAP.get(elements.scatterXField.value) || NUMERIC_FIELDS[2];
+  const yField = NUMERIC_FIELD_MAP.get(elements.scatterYField.value) || NUMERIC_FIELDS[3];
+  const isHistogram = state.chartMode === "histogram";
+
+  elements.histogramControls.hidden = !isHistogram;
+  elements.scatterControls.hidden = isHistogram;
+  elements.chartModeButtons.forEach((button) => {
+    const active = button.dataset.chartMode === state.chartMode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+
+  if (isHistogram) {
+    renderHistogram(features, histogramField);
+    elements.statisticsSummary.innerHTML = statisticsBlock(histogramField, features);
+  } else {
+    renderScatterPlot(features, xField, yField);
+    elements.statisticsSummary.innerHTML =
+      statisticsBlock(xField, features) + statisticsBlock(yField, features);
+  }
+}
+
+function populateChartControls() {
+  const options = NUMERIC_FIELDS.map(
+    (field) => `<option value="${field.key}">${escapeHtml(fieldDisplayName(field))}</option>`,
+  ).join("");
+  elements.histogramField.innerHTML = options;
+  elements.scatterXField.innerHTML = options;
+  elements.scatterYField.innerHTML = options;
+  elements.histogramField.value = "elevation_field_m";
+  elements.scatterXField.value = "conductivity_field_us_cm";
+  elements.scatterYField.value = "ph_field";
 }
 
 function dotClass(featureClass) {
@@ -508,7 +847,9 @@ function pauseTour(options = {}) {
   if (options.reset) {
     state.tourIndex = -1;
     state.tourPhase = null;
+    state.activeFeatureId = null;
     setActiveResult(null, { scroll: false });
+    renderStatisticsPanel();
   }
   if (options.closePopup) {
     popup.remove();
@@ -590,7 +931,7 @@ function showTourFeature(index) {
   clearTourPopupTimer();
   popup.remove();
   openFeature(feature, camera.overview);
-  setActiveResult(feature.properties.feature_id);
+  setActiveResult(feature.properties.feature_id, { scroll: false });
   updateTourControls();
   state.tourZoomTimer = window.setTimeout(() => {
     const currentFeature = state.filteredData?.features[state.tourIndex];
@@ -757,6 +1098,15 @@ function bindControls() {
     input.addEventListener(input === elements.search ? "input" : "change", filterData);
   });
   elements.reset.addEventListener("click", resetFilters);
+  elements.chartModeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.chartMode = button.dataset.chartMode;
+      renderStatisticsPanel();
+    });
+  });
+  [elements.histogramField, elements.scatterXField, elements.scatterYField].forEach((select) => {
+    select.addEventListener("change", renderStatisticsPanel);
+  });
   elements.tourPlay.addEventListener("click", startTour);
   elements.tourPause.addEventListener("click", () => pauseTour({ revealPopup: true }));
   elements.fit.addEventListener("click", () => fitToFeatures());
@@ -800,6 +1150,7 @@ function openHashFeature() {
 }
 
 async function initialize() {
+  populateChartControls();
   bindControls();
 
   map.on("style.load", () => {
@@ -820,6 +1171,7 @@ async function initialize() {
     addDataLayers();
     updateSummary(data.features);
     renderResults(data.features);
+    renderStatisticsPanel();
     fitToFeatures(data.features);
     elements.loading.hidden = true;
     if (!openHashFeature()) startTour();
